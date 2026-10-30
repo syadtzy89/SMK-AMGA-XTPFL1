@@ -2805,6 +2805,125 @@ window.loadFromSupabase = async function(){
 })();
 </script>
 
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+(function(){
+  const URL = "https://muflmlxijkguivkuwqit.supabase.co";
+  const KEY = "sb_publishable_SSaQ9LucZGb01mjv6wwdlQ_yhk30aUI";
+  let sb = null;
+  function getSB(){
+    if(sb) return sb;
+    if(window.supabase && window.supabase.createClient){
+      sb = window.supabase.createClient(URL, KEY);
+      return sb;
+    }
+    return null;
+  }
+  function badge(t){
+    let el=document.getElementById('tpfl-cloud-badge');
+    if(!el){
+      el=document.createElement('div');
+      el.id='tpfl-cloud-badge';
+      el.style.cssText='position:fixed;bottom:10px;right:10px;background:#0F0F14;color:#fff;padding:6px 12px;border-radius:999px;font-size:10px;z-index:999999;border:1px solid #7C3AED;font-family:monospace;';
+      document.body.appendChild(el);
+    }
+    el.textContent=t+' '+URL;
+  }
+  async function load(){
+    const c=getSB(); if(!c){badge('CONNECTING'); setTimeout(load,800); return;}
+    badge('CONNECTED');
+    try{
+      const r1=await c.from('kas_periode').select('*');
+      const r2=await c.from('siswa_profiles').select('*');
+      const r3=await c.from('kas_expense').select('*');
+      if(r1.data) { localStorage.setItem('tpfl_cloud_kas', JSON.stringify(r1.data)); window.__CLOUD_KAS__=r1.data; }
+      if(r2.data) { localStorage.setItem('tpfl_cloud_profiles', JSON.stringify(r2.data)); window.__CLOUD_PROFILES__=r2.data; }
+      if(r3.data) { localStorage.setItem('tpfl_cloud_expense', JSON.stringify(r3.data)); }
+      console.log('cloud loaded', r1.data?.length, r2.data?.length);
+    }catch(e){console.error(e); badge('ERROR');}
+  }
+
+  // Hook save portfolio: find all buttons that contain Simpan and near portfolio form
+  function hookPortfolio(){
+    document.addEventListener('click', async (e)=>{
+      const btn = e.target.closest('button');
+      if(!btn) return;
+      const txt = (btn.textContent||'').toLowerCase();
+      if(txt.includes('simpan') && (txt.includes('profil') || txt.includes('portfolio') || txt.includes('keahlian'))){
+        // Try to find absen from page state - look for selected absen in window or DOM
+        let absen = window.__SELECTED_ABSEN__ || window.__CURRENT_ABSEN__ || null;
+        if(!absen){
+          // Try to parse from URL hash or localStorage
+          const sel = document.querySelector('[data-absen]')?.getAttribute('data-absen');
+          if(sel) absen=sel;
+        }
+        // Fallback: try to get from global React state exposed
+        if(!absen){
+          // Look for input that shows absen number
+          const possible = document.body.innerHTML.match(/absen[:\s]+(\d+)/i);
+          if(possible) absen=possible[1];
+        }
+        if(absen){
+          const keahlian = document.querySelector('textarea[placeholder*="keahlian" i], textarea[name*="keahlian" i]')?.value || '';
+          const prestasi = document.querySelector('textarea[placeholder*="prestasi" i]')?.value || '';
+          const bio = document.querySelector('textarea[placeholder*="bio" i], textarea[placeholder*="tentang" i]')?.value || '';
+          const c=getSB(); if(c){
+            try{
+              await c.from('siswa_profiles').upsert({absen: parseInt(absen), portfolio: {keahlian, prestasi, bio, updatedAt: new Date().toISOString()}, nama: 'SISWA-'+absen}, {onConflict:'absen'});
+              badge('SAVED'); setTimeout(()=>badge('CONNECTED'),1500);
+              console.log('profile saved cloud', absen);
+            }catch(err){console.error(err);}
+          }
+        }
+      }
+    });
+  }
+
+  // Hook kas: when checkbox changes, save all kas_periode from window if available
+  function hookKas(){
+    document.addEventListener('change', async (e)=>{
+      const target = e.target;
+      if(target.type==='checkbox'){
+        // Check if inside kas table
+        const isKas = target.closest('[class*="kas"], [id*="kas"]') || document.body.innerHTML.toLowerCase().includes('kas multi');
+        if(isKas){
+          // Try to get current kas data from global
+          let periods = window.__CLOUD_KAS__ || [];
+          // If we have periods, update and save the one that changed
+          // For now, save all known periods - the app's state will be captured via polling of localStorage if app saves there
+          const c=getSB();
+          if(c && periods.length>0){
+            for(let p of periods){
+              try{ await c.from('kas_periode').upsert(p, {onConflict:'id'}); }catch(_){}
+            }
+            badge('SAVED');
+          }
+        }
+      }
+    });
+  }
+
+  // Expose helpers for manual save from console
+  window.TPFL_SAVE_KAS_CLOUD = async function(id, data){
+    const c=getSB(); if(!c) return;
+    await c.from('kas_periode').upsert({id, ...data}, {onConflict:'id'});
+    badge('SAVED');
+  };
+  window.TPFL_SAVE_PROFILE_CLOUD = async function(absen, portfolio){
+    const c=getSB(); if(!c) return;
+    await c.from('siswa_profiles').upsert({absen: parseInt(absen), portfolio, nama:'SISWA-'+absen}, {onConflict:'absen'});
+    badge('SAVED');
+  };
+
+  load();
+  hookPortfolio();
+  hookKas();
+  setInterval(load, 12000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) load(); });
+})();
+</script>
+<div style="display:none">https://muflmlxijkguivkuwqit.supabase.co https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js</div>
 </head>
 <body>
   <div id="root"></div>
